@@ -5,23 +5,31 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.*;
 import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Dot;
+import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Figure;
+import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Point;
 
 import java.util.Iterator;
-import java.util.Vector;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DrawView extends SurfaceView implements SurfaceHolder.Callback, View.OnTouchListener {
 
     private AnimationThread thread;
     private boolean notKilled;
+    private GestureDetector mDetector;
+    private Figure figure;
 
     public DrawView(Context context, AttributeSet attrs) {
         super(context, attrs);
         getHolder().addCallback(this);
         setOnTouchListener(this);
+        mDetector = new GestureDetector(this.getContext(), new gestureListener());
+        figure = new Figure();
         notKilled = true;
-        thread = new AnimationThread(new Click(getWidth() / 2, getHeight() / 2), getHolder());
+        thread = new AnimationThread(new Point(getWidth() / 2, getHeight() / 2), getHolder());
     }
 
     @Override
@@ -45,36 +53,53 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
     }
 
     @Override
-    public boolean onTouch(View view, MotionEvent motionEvent) {
-        thread.setCenter(new Click(motionEvent.getX(), motionEvent.getY()));
-        return false;
+    public boolean onTouch(View view, MotionEvent event) {
+        //thread.setCenter(new Point(motionEvent.getX(), motionEvent.getY()));
+        boolean result = mDetector.onTouchEvent(event);
+        if (!result) {
+            figure.add(new Point(event.getX(), event.getY()));
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                thread.addFigure(deepCopyFigure());
+                figure.clear();
+                result = true;
+            }
+        }
+        return result;
     }
 
-    private class Click {
-        private float X, Y;
+    private Figure deepCopyFigure() {
+        Figure copy = new Figure();
+        for(Point p : figure) {
+            copy.add(p.clone());
+        }
+        return copy;
+    }
 
-        public Click(float X, float Y) {
-            this.X = X;
-            this.Y = Y;
+    class gestureListener extends GestureDetector.SimpleOnGestureListener {
+        @Override
+        public boolean onDown(MotionEvent e) {
+            return true;
         }
     }
 
     class AnimationThread extends Thread {
         private final SurfaceHolder surfaceHolder;
         private Paint paint;
-        private Vector<Dot> dots;
-        private int spawnRate = 3;
+        private float spawnRate = 1F;
         private int refreshRate = 20;
         private int stepLength = 10;
         private float growth = 1.015F;
         private int canvasWidth;
         private int canvasHeight;
-        private Click center;
+        private Point center;
+        private CopyOnWriteArrayList<Figure> figures;
+        private CopyOnWriteArrayList<Figure> activeFigures;
 
-        public AnimationThread(Click center, SurfaceHolder surfaceHolder) {
+        public AnimationThread(Point center, SurfaceHolder surfaceHolder) {
             this.surfaceHolder = surfaceHolder;
             this.center = center;
-            dots = new Vector<>();
+            this.figures = new CopyOnWriteArrayList<>();
+            this.activeFigures = new CopyOnWriteArrayList<>();
             paint = new Paint();
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.CYAN);
@@ -85,20 +110,22 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
             canvasHeight = canvas.getHeight();
         }
 
-        private void stepDots() {
-            Iterator<Dot> iter = dots.iterator();
-            while(iter.hasNext()) {
-                Dot dot = iter.next();
-                if(dot.X > canvasWidth || dot.X < 0 || dot.Y > canvasHeight || dot.Y < 0) {
-                    //dot.hide();
-                    iter.remove();
+        private void stepFigures() {
+            for(Figure figure : activeFigures) {
+                Point center = figure.getCenter();
+                if (center.X > canvasWidth || center.X < 0 || center.Y > canvasHeight || center.Y < 0) {
+                    //center.hide();
+                    activeFigures.remove(figure);
                 } else {
-                    dot.step(stepLength, growth);
+                    figure.step(stepLength);
                 }
             }
 
-            for(int x = 0; x < spawnRate; x++) {
-                dots.add(new Dot(center.X, center.Y, 3));
+            Random r = new Random();
+            if(r.nextFloat() < spawnRate && figures.size() > 0) {
+                Figure figure = figures.get(r.nextInt(figures.size())).clone();
+                figure.updateCenter(new Point(getWidth()/2, getHeight()/2));
+                activeFigures.add(figure);
             }
 
         }
@@ -109,7 +136,7 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
             while(notKilled) {
                 synchronized (surfaceHolder) {
                     canvas = surfaceHolder.lockCanvas(null);
-                    stepDots();
+                    stepFigures();
 
                     if(canvas != null) {
                         updateDimensions(canvas);
@@ -126,25 +153,50 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
             }
         }
 
+        public void addFigure(Figure figure) {
+            figure.scale(0.8F);
+            figure.updateCenter(new Point(getWidth()/2, getHeight()/2));
+            this.figures.add(figure);
+            this.activeFigures.add(figure);
+        }
+
+        private void drawFigure(Figure figure, Canvas canvas) {
+            for (int i = 0; i < figure.size() - 1; i++) {
+                Point current = figure.get(i);
+                Point next = figure.get(i + 1);
+                canvas.drawLine(current.X, current.Y, next.X, next.Y, figure.getPaint());
+            }
+        }
+
         private void doDraw(Canvas canvas) {
             canvas.drawColor(Color.BLACK);
 
-            for (Dot dot : dots) {
-                canvas.drawCircle(dot.X, dot.Y, dot.RADIUS, dot.getPaint());
+            //for (Dot dot : dots) {
+            //    canvas.drawCircle(dot.X, dot.Y, dot.RADIUS, dot.getPaint());
+            //}
+
+            //for (int i = 0; i < dots.size()-1; i++) {
+            //    Dot current = dots.get(i);
+            //    Dot next = dots.get(i+1);
+            //    canvas.drawLine(current.X, current.Y, next.X, next.Y, current.getPaint());
+            //}
+
+            // Draw past figures
+            figures.iterator();
+            Iterator<Figure> iter = activeFigures.iterator();
+            while(iter.hasNext()) {
+                Figure figure = iter.next();
+                drawFigure(figure, canvas);
             }
 
-            for (int i = 0; i < dots.size()-1; i++) {
-                Dot current = dots.get(i);
-                Dot next = dots.get(i+1);
-                canvas.drawLine(current.X, current.Y, next.X, next.Y, current.getPaint());
-            }
-            //drawPath(path, paint);
-            //canvas.drawCircle(x,y,size,paint);
+            // Draw current figure
+            drawFigure(figure, canvas);
+
             canvas.save();
         }
 
-        private void setCenter(Click click) {
-            this.center = click;
+        private void setCenter(Point point) {
+            this.center = point;
         }
     }
 }
