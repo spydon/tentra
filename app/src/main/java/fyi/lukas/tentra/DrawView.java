@@ -1,15 +1,9 @@
 package fyi.lukas.tentra;
 
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.opengl.GLSurfaceView;
+import android.graphics.*;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.view.*;
-import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Dot;
 import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Figure;
 import fyi.lukas.tentra.fyi.lukas.tentra.shapes.Point;
 
@@ -29,13 +23,22 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
         getHolder().addCallback(this);
         setOnTouchListener(this);
         mDetector = new GestureDetector(this.getContext(), new gestureListener());
-        Paint paint = new Paint();
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setColor(Color.WHITE);
-        paint.setStrokeWidth(5);
-        figure = new Figure(paint);
+        figure = new Figure(getRandomPaint(5));
         notKilled = true;
-        thread = new AnimationThread(new Point(getWidth() / 2, getHeight() / 2), getHolder());
+        thread = new AnimationThread(getHolder());
+    }
+
+    private static Paint getRandomPaint(int width) {
+        Paint paint = new Paint();
+        //paint.setStyle(Paint.Style.FILL);
+        //paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(width);
+        Random r = new Random();
+        paint.setStyle(Paint.Style.STROKE);
+        //paint.setColor(r.nextInt(Integer.MAX_VALUE)*-1);
+        paint.setARGB(255, r.nextInt(256), r.nextInt(256), r.nextInt(256));
+        //paint.setShadowLayer(12, 0, 0, Color.RED);
+        return paint;
     }
 
     @Override
@@ -63,22 +66,17 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
         //thread.setCenter(new Point(motionEvent.getX(), motionEvent.getY()));
         boolean result = mDetector.onTouchEvent(event);
         if (!result) {
-            figure.add(new Point(event.getX(), event.getY()));
+            if(figure.isEmpty()) {
+                figure.moveTo(event.getX(), event.getY());
+            }
+            figure.lineTo(event.getX(), event.getY());
             if (event.getAction() == MotionEvent.ACTION_UP) {
-                thread.addFigure(deepCopyFigure());
-                figure.clear();
+                thread.addFigure(figure.clone());
+                figure = new Figure(getRandomPaint(5));
                 result = true;
             }
         }
         return result;
-    }
-
-    private Figure deepCopyFigure() {
-        Figure copy = new Figure();
-        for(Point p : figure) {
-            copy.add(p.clone());
-        }
-        return copy;
     }
 
     class gestureListener extends GestureDetector.SimpleOnGestureListener {
@@ -90,25 +88,19 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
 
     class AnimationThread extends Thread {
         private final SurfaceHolder surfaceHolder;
-        private Paint paint;
-        private float spawnRate = 0.2F;
+        private float spawnRate = 0.07F;
         private int refreshRate = 20;
         private int stepLength = 10;
         private float growth = 1.015F;
         private int canvasWidth;
         private int canvasHeight;
-        private Point center;
         private CopyOnWriteArrayList<Figure> figures;
         private CopyOnWriteArrayList<Figure> activeFigures;
 
-        public AnimationThread(Point center, SurfaceHolder surfaceHolder) {
+        public AnimationThread(SurfaceHolder surfaceHolder) {
             this.surfaceHolder = surfaceHolder;
-            this.center = center;
             this.figures = new CopyOnWriteArrayList<>();
             this.activeFigures = new CopyOnWriteArrayList<>();
-            paint = new Paint();
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.CYAN);
         }
 
         private void updateDimensions(Canvas canvas) {
@@ -168,34 +160,11 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
         }
 
         private void drawFigure(Figure figure, Canvas canvas) {
-            if(!figure.isEmpty()) {
-                Path path = new Path();
-                Point first = figure.get(0);
-                path.moveTo(first.X, first.Y);
-
-                for(Point point : figure) {
-                    path.lineTo(point.X, point.Y);
-                    //for (int i = 0; i < figure.size() - 1; i++) {
-                    //Point current = figure.get(i);
-                    //Point next = figure.get(i + 1);
-                    //canvas.drawLine(current.X, current.Y, next.X, next.Y, figure.getPaint());
-                }
-                canvas.drawPath(path, figure.getPaint());
-            }
+            canvas.drawPath(figure, figure.getPaint());
         }
 
         private void doDraw(Canvas canvas) {
             canvas.drawColor(Color.BLACK);
-
-            //for (Dot dot : dots) {
-            //    canvas.drawCircle(dot.X, dot.Y, dot.RADIUS, dot.getPaint());
-            //}
-
-            //for (int i = 0; i < dots.size()-1; i++) {
-            //    Dot current = dots.get(i);
-            //    Dot next = dots.get(i+1);
-            //    canvas.drawLine(current.X, current.Y, next.X, next.Y, current.getPaint());
-            //}
 
             // Draw past figures
             figures.iterator();
@@ -211,8 +180,5 @@ public class DrawView extends SurfaceView implements SurfaceHolder.Callback, Vie
             canvas.save();
         }
 
-        private void setCenter(Point point) {
-            this.center = point;
-        }
     }
 }

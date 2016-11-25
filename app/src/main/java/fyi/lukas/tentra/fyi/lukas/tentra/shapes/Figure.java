@@ -1,14 +1,12 @@
 package fyi.lukas.tentra.fyi.lukas.tentra.shapes;
 
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
+import android.graphics.*;
 import org.apache.commons.math3.geometry.euclidean.twod.Vector2D;
 
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-public class Figure extends CopyOnWriteArrayList<Point> {
+public class Figure extends Path {
     private Paint paint;
     private Vector2D direction;
     private static double angle = 0;
@@ -24,20 +22,9 @@ public class Figure extends CopyOnWriteArrayList<Point> {
     }
 
     public Point getCenter() {
-        float maxX = Float.MIN_VALUE;
-        float maxY = Float.MIN_VALUE;
-        float minX = Float.MAX_VALUE;
-        float minY = Float.MAX_VALUE;
-
-        for(Point point : this) {
-            // Use Float.max/min once API 24
-            maxX = maxX < point.X ? point.X : maxX;
-            maxY = maxY < point.Y ? point.Y : maxY;
-            minX = minX > point.X ? point.X : minX;
-            minY = minY > point.Y ? point.Y : minY;
-        }
-
-        return new Point(((maxX - minX) / 2) + minX, ((maxY - minY) / 2) + minY);
+        RectF rectF = new RectF();
+        computeBounds(rectF, true);
+        return new Point(rectF.centerX(), rectF.centerY());
     }
 
     public Paint getPaint() {
@@ -45,10 +32,13 @@ public class Figure extends CopyOnWriteArrayList<Point> {
     }
 
     public void step(float stepLength) {
-        for(Point point : this) {
-            point.X = point.X + (float) direction.getX() * stepLength;
-            point.Y = point.Y + (float) direction.getY() * stepLength;
-        }
+        //for(Point point : this) {
+        //    point.X = point.X + (float) direction.getX() * stepLength;
+        //    point.Y = point.Y + (float) direction.getY() * stepLength;
+        //}
+        Matrix matrix = new Matrix();
+        matrix.setTranslate((float)direction.getX()*stepLength, (float)direction.getY()*stepLength);
+        transform(matrix);
     }
 
     private static Paint getRandomPaint() {
@@ -72,33 +62,30 @@ public class Figure extends CopyOnWriteArrayList<Point> {
     }
 
     public void scale(float factor) {
+        Matrix scaleMatrix = new Matrix();
         Point center = getCenter();
-        int x = 0;
-        for (Point point : this) {
-            if(x%3==0) {
-                point.moveTowards(center, factor);
-            } else {
-                this.remove(point);
-            }
-            x++;
-        }
+        scaleMatrix.setScale(factor, factor, center.X, center.Y);
+        transform(scaleMatrix);
     }
 
     public void updateCenter(Point center) {
-        Point oldCenter = getCenter();
-        for(Point point : this) {
-            point.X = center.X+oldCenter.X-point.X;
-            point.Y = center.Y+oldCenter.Y-point.Y;
-        }
+        Matrix matrix = new Matrix();
+        RectF rectF = new RectF();
+        computeBounds(rectF, true);
+        matrix.setTranslate(-1*(rectF.centerX()-center.X), -1*(rectF.centerY()-center.Y));
+        transform(matrix);
     }
 
     @Override
     public Figure clone() {
+        Paint paint = new Paint();
+        paint.setColor(this.paint.getColor());
+        paint.setStyle(Paint.Style.STROKE);
         Figure figure = new Figure(paint);
-        Path path = new Path();
-        for(Point point : this) {
-            figure.add(point.clone());
-        }
+        figure.set(this);
+        //for(Point point : this) {
+        //    figure.add(point.clone());
+        //}
         return figure;
     }
 }
